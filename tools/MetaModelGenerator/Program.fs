@@ -59,40 +59,46 @@ module Main =
   [<EntryPoint>]
   let main argv =
 
-    let errorHandler =
-      ProcessExiter(
-        colorizer =
-          function
-          | ErrorCode.HelpText -> None
-          | _ -> Some ConsoleColor.Red
-      )
+    try
+      let errorHandler =
+        ProcessExiter(
+          colorizer =
+            function
+            | ErrorCode.HelpText -> None
+            | _ -> Some ConsoleColor.Red
+        )
 
-    let parser = ArgumentParser.Create<CommandArgs>(programName = "MetaModelGenerator", errorHandler = errorHandler)
+      let parser = ArgumentParser.Create<CommandArgs>(programName = "MetaModelGenerator", errorHandler = errorHandler)
 
-    let results = parser.ParseCommandLine argv
+      let results = parser.ParseCommandLine argv
 
-    match results.GetSubCommand() with
-    | Types r ->
-      let metaModelPath = r.GetResult <@ TypeArgs.MetaModelPath @>
-      let OutputFilePath = r.GetResult <@ TypeArgs.OutputFilePath @>
+      match results.GetSubCommand() with
+      | Types r ->
+        let metaModelPath = r.GetResult <@ TypeArgs.MetaModelPath @>
+        let OutputFilePath = r.GetResult <@ TypeArgs.OutputFilePath @>
 
-      let metaModel =
-        readMetaModel metaModelPath
+        let metaModel =
+          readMetaModel metaModelPath
+          |> Async.RunSynchronously
+
+        GenerateTypes.generateType metaModel OutputFilePath
         |> Async.RunSynchronously
 
-      GenerateTypes.generateType metaModel OutputFilePath
-      |> Async.RunSynchronously
+      | ClientServer r ->
 
-    | ClientServer r ->
+        let metaModelPath = r.GetResult <@ ClientServerArgs.MetaModelPath @>
+        let OutputFilePath = r.GetResult <@ ClientServerArgs.OutputFilePath @>
 
-      let metaModelPath = r.GetResult <@ ClientServerArgs.MetaModelPath @>
-      let OutputFilePath = r.GetResult <@ ClientServerArgs.OutputFilePath @>
+        let metaModel =
+          readMetaModel metaModelPath
+          |> Async.RunSynchronously
 
-      let metaModel =
-        readMetaModel metaModelPath
+        GenerateClientServer.generateClientServer metaModel OutputFilePath
         |> Async.RunSynchronously
 
-      GenerateClientServer.generateClientServer metaModel OutputFilePath
-      |> Async.RunSynchronously
 
-    0
+      0
+
+    with ex ->
+      eprintfn "Error: %A" ex
+      1

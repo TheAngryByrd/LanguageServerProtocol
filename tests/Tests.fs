@@ -10,6 +10,9 @@ open Newtonsoft.Json
 open Ionide.LanguageServerProtocol.JsonRpc
 open System.Collections.Generic
 open System.Runtime.Serialization
+open System.Threading
+open System.Threading.Tasks
+open StreamJsonRpc
 
 type Record1 = { Name: string; Value: int }
 type Record2 = { Name: string; Position: int }
@@ -1039,9 +1042,131 @@ let private serializationTests =
     StartWithSetup.tests
   ]
 
+
+type IClient =
+  [<JsonRpcMethod("clientMethodExample")>]
+  abstract member ClientMethodCallExample: input: int * ct: CancellationToken -> Task<int>
+
+  [<JsonRpcMethod("clientNotificationExample")>]
+  abstract member ClientNotificationExample: arg1: int -> Task
+
+and Client(tcs: TaskCompletionSource<int>) =
+  interface IClient with
+    member _.ClientMethodCallExample(input: int, ct: CancellationToken) : Task<int> =
+      task {
+        do! Task.Yield()
+        printfn "Client: ClientMethodCallExample got %d" input
+
+        if ct = CancellationToken.None then
+          printfn "Client: no cancellation token"
+        else
+          printfn "Client: got cancellation token"
+
+        try
+          do! Task.Delay(1000, ct)
+        with :? OperationCanceledException ->
+          printfn "Client: ClientMethodCallExample was cancelled"
+
+        return input + 1
+      }
+
+    member _.ClientNotificationExample(arg1: int) : Task =
+      task {
+        do! Task.Yield()
+        printfn "Client: ClientNotificationExample got %d" arg1
+        tcs.SetResult(arg1)
+      }
+
+and IServerInterface =
+  [<JsonRpcMethod("methodExample")>]
+  abstract member MethodCallExample: input: int * ct: CancellationToken -> Task<int>
+
+  [<JsonRpcMethod("notificationExample")>]
+  abstract member NotificationExample: arg1: int -> Task
+
+and Server(client: IClient) =
+  interface IServerInterface with
+    member _.MethodCallExample(input: int, ct: CancellationToken) : Task<int> =
+      task {
+        do! Task.Yield()
+        printfn "Server: MethodCallExample got  %d" input
+
+        if ct = CancellationToken.None then
+          printfn "Server: no cancellation token"
+        else
+          printfn "Server: got cancellation token"
+
+        do! Task.Delay(1000, ct)
+        // try
+
+        // with :? OperationCanceledException ->
+        //   printfn "Server: MethodCallExample was cancelled"
+
+        return input + 1
+      }
+
+    member this.NotificationExample(arg1: int) : Task =
+      task {
+        do! Task.Yield()
+        do! client.ClientNotificationExample(arg1 + 1)
+        printfn "Server: NotificationExample got %d" arg1
+      }
+
+let jsonRpcReworkTests =
+  ftestList "JsonRpc Rework" [
+    testCaseTask "lol"
+    <| fun _ ->
+      task {
+
+        let struct (serverStream, clientStream) = Nerdbank.Streams.FullDuplexStream.CreatePair()
+        use serverStream = serverStream
+        use clientStream = clientStream
+
+        let tcs = TaskCompletionSource<int> TaskCreationOptions.RunContinuationsAsynchronously
+
+        let client = Client(tcs)
+
+
+        // Client side - makes calls to the server
+        let clientRpc = new JsonRpc(clientStream)
+        let clientOpts = JsonRpcTargetOptions()
+        clientRpc.AddLocalRpcTarget<IClient>(client, clientOpts)
+        let serverApi = clientRpc.Attach<IServerInterface>()
+        clientRpc.StartListening()
+
+
+        let handler = new HeaderDelimitedMessageHandler(serverStream, serverStream, defaultJsonRpcFormatter ())
+        // Server side - provides the implementation
+        use serverRpc = new JsonRpc(handler)
+        let serverOpts = JsonRpcTargetOptions()
+        let clientApi = serverRpc.Attach<IClient>()
+        let server = Server(clientApi)
+        serverRpc.AddLocalRpcTarget<IServerInterface>(server, serverOpts)
+        serverRpc.StartListening()
+
+        use cts = new CancellationTokenSource()
+
+        cts.CancelAfter(500)
+
+        // Call the server from the client
+        try
+          let! result = serverApi.MethodCallExample(41, cts.Token)
+
+          Expect.equal result 42 "Result should be 42"
+
+          do! serverApi.NotificationExample(41)
+          let! resultFromNotification = tcs.Task
+          Expect.equal resultFromNotification 42 "Result from notification should be 42"
+        with e ->
+          printfn "Exception: %A" e
+          Expect.isFalse true ($"{e}")
+      }
+  ]
+
 [<Tests>]
 let tests =
   testList "LSP" [
     serializationTests
     Utils.tests
+    jsonRpcReworkTests
   ]

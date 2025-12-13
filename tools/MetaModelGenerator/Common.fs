@@ -58,5 +58,7 @@ module TypeAnonBuilders =
     static member LspRegExp() = Ast.LongIdent Widgets.DocumentUriString
 
     static member AsyncPrefix(t: WidgetBuilder<Type>) = Ast.AppPrefix(Ast.LongIdent "Async", [ t ])
+    static member TaskPrefix(t: WidgetBuilder<Type>) = Ast.AppPrefix(Ast.LongIdent "Task", [ t ])
+    static member TaskIdent = Ast.LongIdent "Task"
 
     static member AsyncLspResultPrefix(t: WidgetBuilder<Type>) = Ast.AppPrefix(Ast.LongIdent "AsyncLspResult", [ t ])

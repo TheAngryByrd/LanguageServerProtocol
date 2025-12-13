@@ -185,7 +185,7 @@ module Requests =
               raise rpcException
         }
 
-      Async.StartAsTask(asyncContinuation, cancellationToken = ct)
+      Async.StartImmediateAsTask(asyncContinuation, cancellationToken = ct)
 
     Func<'param, CancellationToken, Task<'result>>(runAsTask) :> Delegate
 

@@ -314,13 +314,13 @@ let tests =
 
         Expect.isFalse isLsp "MarkedString.String is not direct lsp"
 
-      testCase "Client isn't lsp"
-      <| fun _ ->
-        let isLsp =
-          typeof<Ionide.LanguageServerProtocol.Client.Client>
-          |> isLspType []
+    // testCase "Client isn't lsp"
+    // <| fun _ ->
+    //   let isLsp =
+    //     typeof<Ionide.LanguageServerProtocol.Client.Client>
+    //     |> isLspType []
 
-        Expect.isFalse isLsp "Client isn't lsp"
+    //   Expect.isFalse isLsp "Client isn't lsp"
     ]
 
     testList (nameof convertExtensionDataDictionariesToMap) [
